@@ -1,16 +1,23 @@
 # https://docs.streamlit.io/library/get-started/create-an-app
 import streamlit as st
-from langchain.prompts import PromptTemplate
+from datetime import datetime
 
+today = datetime.today().strftime("%H:%M:%S")
 
-a = [1, 2, 3, 4]
+st.title(today)
 
-d = {"x":1}
+model = st.selectbox("Choose yout model", ("GPT-3", "GPT-4",))
 
-p = PromptTemplate.from_template("xxxx")
+if model == "GPT-3":
+    st.write("cheap")
 
-a
+else:
+    st.write("not cheap")
+    name = st.text_input("What is your name?")
+    st.write(name)
 
-d
+    value = st.slider("temperature", min_value=0.1, max_value=1.0,)
 
-st.selectbox("Choose yout model", {"gpt3", "gpt4"})
+    st.write(value)
+
+# st.write(value)
