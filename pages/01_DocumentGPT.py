@@ -1,7 +1,5 @@
-import time
 from typing import Dict, List
 from uuid import UUID
-from langchain.schema.output import ChatGenerationChunk, GenerationChunk
 import streamlit as st
 
 from langchain.document_loaders import UnstructuredFileLoader
@@ -14,6 +12,11 @@ from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 from langchain.callbacks.base import BaseCallbackHandler
+
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain.chat_models import ChatOpenAI
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 st.set_page_config(
     page_title="DocumentGPT",
@@ -40,6 +43,18 @@ llm = ChatOpenAI(
         ChatCallbackHandler(),
     ]
 )
+
+@st.cache_resource
+def init_memory(_llm):
+    return ConversationSummaryBufferMemory(
+        llm=_llm, max_token_limit=60, return_messages=True,
+    )
+
+memory_llm = ChatOpenAI(
+    temperature=0.1,
+)
+
+memory = init_memory(memory_llm)
 
 @st.cache_data(show_spinner="Embedding file...")
 def embed_file(file):
@@ -69,7 +84,7 @@ def send_message(message, role, save=True):
         st.markdown(message)
     if save:
         save_message(message, role)
-
+    
 def paint_history():
     for message in st.session_state["messages"]:
         send_message(message["message"], message["role"], save=False,)
@@ -86,8 +101,10 @@ prompt = ChatPromptTemplate.from_messages(
             Answer the question using ONLY the following context. If you don't know the answer just say you don't know. DON'T make anything up.
             
             Context: {context}
-            """,
+            """
+            ,
         ),
+        MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
 )
@@ -104,7 +121,9 @@ st.markdown(
 )
 with st.sidebar:
     file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["pdf", "txt", "docx"],)
-    # st.write(st.session_state["messages"])
+
+def load_memory(*_):
+    return memory.load_memory_variables({})["history"]
 
 if file:
     retriever = embed_file(file)
@@ -118,13 +137,19 @@ if file:
             {
                 "context": retriever | RunnableLambda(format_docs),
                 "question": RunnablePassthrough(),
+                "history": load_memory,
             }
             | prompt
             | llm
         )
         with st.chat_message("ai"):
-            response = chain.invoke(message)
-        # send_message(response.content, "ai")
+            result = chain.invoke(message)
+            memory.save_context(
+                {"input": message},
+                {"output": result.content}
+            )
 
 else:
     st.session_state["messages"] = []
+with st.sidebar:
+    st.write(load_memory())
